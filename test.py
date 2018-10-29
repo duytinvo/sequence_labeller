@@ -48,7 +48,7 @@ if __name__ == '__main__':
         
     argparser.add_argument('--test_file', help='Tested file', default="/media/data/NER/conll03/conll03/test.bmes", type=str)
 
-    argparser.add_argument('--args_file', help='Args file', default="./results/a1.bilstm.args.pkl", type=str)
+    argparser.add_argument('--args_file', help='Args file', default="./results/a6.bilstm.args.pkl", type=str)
     
     args = argparser.parse_args()
     

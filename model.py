@@ -37,7 +37,7 @@ class Classifier(object):
         word_layers = 1
         word_bidirect = True
         word_HPs = [len(self.args.vocab.w2i), self.args.word_dim, self.args.word_pred_embs, self.args.word_hidden_dim, self.args.dropout, word_layers, word_bidirect]
-        char_HPs = [len(self.args.vocab.c2i), self.args.char_dim, None, self.args.char_hidden_dim, self.args.dropout, word_layers, word_bidirect]
+        char_HPs = [len(self.args.vocab.c2i), self.args.char_dim, self.args.char_pred_embs, self.args.char_hidden_dim, self.args.dropout, word_layers, word_bidirect]
         
         
         self.model = fNN(word_HPs=word_HPs, char_HPs=char_HPs, num_labels=len(self.args.vocab.l2i), drop_final=args.drop_final)
@@ -83,31 +83,31 @@ class Classifier(object):
 
             label_prob, label_pred = self.model.inference(label_score, mask_tensor)
             
-#            pred_label, gold_label = recover_label(label_pred, label_tensor, mask_tensor, self.args.vocab.l2i, word_seq_recover)
-#            pred_results += pred_label
-#            gold_results += gold_label
-#        acc, p, r, f = get_ner_fmeasure(gold_results, pred_results)
+            pred_label, gold_label = recover_label(label_pred, label_tensor, mask_tensor, self.args.vocab.l2i, word_seq_recover)
+            pred_results += pred_label
+            gold_results += gold_label
+        acc, p, r, f = get_ner_fmeasure(gold_results, pred_results)
             
-            label_pred = label_pred.cpu().data.numpy()
-            label_tensor = label_tensor.cpu().data.numpy()
-            sequence_lengths = sequence_lengths.cpu().data.numpy()
-            
-            for lab, lab_pred, length in zip(label_tensor, label_pred, sequence_lengths):
-                lab      = lab[:length]
-                lab_pred = lab_pred[:length]                
-                accs    += [a==b for (a, b) in zip(lab, lab_pred)]
-    
-                lab_chunks      = set(NERchunks.get_chunks(lab, self.args.vocab.l2i))
-                lab_pred_chunks = set(NERchunks.get_chunks(lab_pred, self.args.vocab.l2i))
-    
-                correct_preds += len(lab_chunks & lab_pred_chunks)
-                total_preds   += len(lab_pred_chunks)
-                total_correct += len(lab_chunks)
-                
-        p   = correct_preds / total_preds if correct_preds > 0 else 0
-        r   = correct_preds / total_correct if correct_preds > 0 else 0
-        f  = 2 * p * r / (p + r) if correct_preds > 0 else 0
-        acc = np.mean(accs)
+#            label_pred = label_pred.cpu().data.numpy()
+#            label_tensor = label_tensor.cpu().data.numpy()
+#            sequence_lengths = sequence_lengths.cpu().data.numpy()
+#            
+#            for lab, lab_pred, length in zip(label_tensor, label_pred, sequence_lengths):
+#                lab      = lab[:length]
+#                lab_pred = lab_pred[:length]                
+#                accs    += [a==b for (a, b) in zip(lab, lab_pred)]
+#    
+#                lab_chunks      = set(NERchunks.get_chunks(lab, self.args.vocab.l2i))
+#                lab_pred_chunks = set(NERchunks.get_chunks(lab_pred, self.args.vocab.l2i))
+#    
+#                correct_preds += len(lab_chunks & lab_pred_chunks)
+#                total_preds   += len(lab_pred_chunks)
+#                total_correct += len(lab_chunks)
+#                
+#        p   = correct_preds / total_preds if correct_preds > 0 else 0
+#        r   = correct_preds / total_correct if correct_preds > 0 else 0
+#        f  = 2 * p * r / (p + r) if correct_preds > 0 else 0
+#        acc = np.mean(accs)
 
         return acc, f
 
@@ -210,10 +210,10 @@ class Classifier(object):
          ## set model in eval model
         self.model.eval()
         
-        words=self.args.vocab.process_seq(sent)  
-        fake_label = [[0]*len(words)]
+        words = self.word2idx(sent)
+        char_ids, word_ids = zip(*words)
+        fake_label = [[0]*len(word_ids)]
         
-        words = [self.word2idx(word) for word in words]
         char_ids, word_ids = zip(*words)
         word_ids, sequence_lengths = seqPAD.pad_sequences([word_ids], pad_tok=0, wthres=wl, cthres=cl)
         char_ids, word_lengths = seqPAD.pad_sequences([char_ids], pad_tok=0, nlevels=2, wthres=wl, cthres=cl)
@@ -243,6 +243,13 @@ def build_data(args):
         args.word_pred_embs = Embeddings.get_W(args.emb_file, args.word_dim,vocab.w2i, scale)
     else:
         args.word_pred_embs = None  
+
+    if args.c_pre_trained:
+        scale = np.sqrt(3.0 / args.char_dim)
+        args.char_pred_embs = Embeddings.get_W(args.c_emb_file, args.char_dim,vocab.c2i, scale)
+    else:
+        args.char_pred_embs = None 
+        
     SaveloadHP.save(args, args.model_args)
     return args
 
@@ -282,6 +289,10 @@ if __name__ == '__main__':
         
     argparser.add_argument("--word_hidden_dim", type = int, default = 100, help = "LSTM layers")
 
+    argparser.add_argument("--c_emb_file", type = str, default = "/w2vscripts/results/ner.char.50.vec", help = "character embedding file")
+    
+    argparser.add_argument("--c_pre_trained", type = int, default = 0, help = "Use pre-trained embedding or not")
+    
     argparser.add_argument("--char_dim", type = int, default = 50, help = "char embedding size")
         
     argparser.add_argument("--char_hidden_dim", type = int, default = 100, help = "char LSTM layers")
